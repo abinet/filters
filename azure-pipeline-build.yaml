@@ -22,5 +22,6 @@ stages:
            registryUsername: $(registryUsername)
            registryPassword: $(registryPassword)
            registryRepository: 'infra'
+           imageName: 'skipper-jwt'
            #containerContextPath: $(containerPath)
            #dockerFilePath: $(containerPath)/Dockerfile
