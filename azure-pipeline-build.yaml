@@ -1,0 +1,26 @@
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: pipelines/pipelines
+
+
+
+variables:
+  - group: general
+  - name: version
+    value: '0.0.1'
+
+stages:
+  - stage: Build
+    displayName: Build Stage
+    jobs:
+       - template: ./templates/build-container-job-linux.yaml@templates
+         parameters:
+           version: $(version)
+           registryUri: $(registryUri)
+           registryUsername: $(registryUsername)
+           registryPassword: $(registryPassword)
+           registryRepository: 'infra'
+           #containerContextPath: $(containerPath)
+           #dockerFilePath: $(containerPath)/Dockerfile
