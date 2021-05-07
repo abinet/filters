@@ -9,7 +9,7 @@ resources:
 variables:
   - group: general
   - name: version
-    value: '0.0.1'
+    value: '0.0.2'
 
 stages:
   - stage: Build
@@ -23,5 +23,4 @@ stages:
            registryPassword: $(registryPassword)
            registryRepository: 'infra'
            imageName: 'skipper-jwt'
-           #containerContextPath: $(containerPath)
-           #dockerFilePath: $(containerPath)/Dockerfile
+
