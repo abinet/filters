@@ -41,6 +41,7 @@ type (
 		typ        roleCheckType
 		authClient *authClient
 		claims     []string
+		upstreamHeaders map[string]string
 	}
 
 	openIDConfig struct {
@@ -84,29 +85,6 @@ func getOpenIDConfig(issuerURL string) (*openIDConfig, error) {
 }
 
 var issuerAuthClient map[string]*authClient = make(map[string]*authClient)
-
-/*func (tii jwtValidationInfo) Active() bool {
-	return tii.getBoolValue("active")
-}
-
-func (tii jwtValidationInfo) Sub() (string, error) {
-	return tii.getStringValue("sub")
-}
-
-func (tii jwtValidationInfo) getBoolValue(k string) bool {
-	if active, ok := tii[k].(bool); ok {
-		return active
-	}
-	return false
-}
-
-func (tii jwtValidationInfo) getStringValue(k string) (string, error) {
-	s, ok := tii[k].(string)
-	if !ok {
-		return "", errInvalidTokenintrospectionData
-	}
-	return s, nil
-}*/
 
 var rsakeys map[string]*rsa.PublicKey
 
@@ -161,8 +139,6 @@ func (s *jwtValidationSpec) CreateFilter(args []interface{}) (filters.Filter, er
 
 	issuerURL := sargs[0]
 
-	sargs = sargs[1:]
-
 	cfg, err := getOpenIDConfig(issuerURL)
 	if err != nil {
 		return nil, err
@@ -182,14 +158,29 @@ func (s *jwtValidationSpec) CreateFilter(args []interface{}) (filters.Filter, er
 		typ:        s.typ,
 		authClient: ac,
 	}
+
 	switch f.typ {
 	case checkOAuthTokenintrospectionAnyClaims:
-		f.claims = sargs
+		f.claims = strings.Split(sargs[1], " ")
 		if !all(f.claims, cfg.ClaimsSupported) {
 			return nil, fmt.Errorf("%v: %s, supported Claims: %v", errUnsupportedClaimSpecified, strings.Join(f.claims, ","), cfg.ClaimsSupported)
 		}
 	default:
 		return nil, filters.ErrInvalidFilterParameters
+	}
+
+	// inject additional headers from the access token for upstream applications
+	if len(sargs) > 2 && sargs[2] != "" {
+		f.upstreamHeaders = make(map[string]string)
+
+		for _, header := range strings.Split(sargs[2], " ") {
+			sl := strings.SplitN(header, ":", 2)
+			if len(sl) != 2 || sl[0] == "" || sl[1] == "" {
+				return nil, fmt.Errorf("%w: malformatted filter for upstream headers %s", filters.ErrInvalidFilterParameters, sl)
+			}
+			f.upstreamHeaders[sl[0]] = sl[1]
+		}
+		log.Debugf("Upstream Headers: %v", f.upstreamHeaders)
 	}
 
 	return f, nil
@@ -204,17 +195,6 @@ func (f *jwtValidationFilter) String() string {
 	}
 	return AuthUnknown
 }
-
-/*func (f *jwtValidationFilter) validateAnyClaims(info jwtValidationInfo) bool {
-	for _, wantedClaim := range f.claims {
-		if claims, ok := info["claims"].(map[string]interface{}); ok {
-			if _, ok2 := claims[wantedClaim]; ok2 {
-				return true
-			}
-		}
-	}
-	return false
-}*/
 
 func (f *jwtValidationFilter) validateAnyClaims(token jwt.Token) bool {
 	for _, wantedClaim := range f.claims {
@@ -324,6 +304,9 @@ func (f *jwtValidationFilter) Request(ctx filters.FilterContext) {
 
 	authorized(ctx, sub)
 	ctx.StateBag()[jwtValidationCacheKey] = info
+
+	// adding upstream headers
+	f.setHeaders(ctx, info.Claims.(jwt.MapClaims))
 }
 
 func (f *jwtValidationFilter) Response(filters.FilterContext) {}
@@ -331,4 +314,17 @@ func (f *jwtValidationFilter) Response(filters.FilterContext) {}
 // Close cleans-up the authClient
 func (f *jwtValidationFilter) Close() {
 	f.authClient.Close()
+}
+
+func (f *jwtValidationFilter) setHeaders(ctx filters.FilterContext, container jwt.MapClaims) (err error) {
+	for key, query := range f.upstreamHeaders {
+		match := container[query]
+		log.Debugf("header: %s results: %s", query, match)
+		if match != nil {
+			log.Errorf("Lookup failed for upstream header '%s'", query)
+			continue
+		}
+		ctx.Request().Header.Set(key, match.(string))
+	}
+	return
 }
