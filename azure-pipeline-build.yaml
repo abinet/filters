@@ -9,7 +9,7 @@ resources:
 variables:
   - group: general
   - name: version
-    value: '0.0.2'
+    value: '0.0.3'
 
 stages:
   - stage: Build
